@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>WTI Paper Trading — Simulateur</title>
+
+<!-- Polices : une police "terminal" pour les chiffres, une police lisible pour le texte -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  /* ============================================================
+     VARIABLES DE COULEUR (thème sombre façon "salle de marché")
+     ============================================================ */
+  :root {
+    --bg: #0b0e11;              /* fond général, presque noir */
+    --panel: #131722;           /* fond des panneaux (même teinte que TradingView dark) */
+    --panel-border: #1e2430;
+    --text: #d1d4dc;            /* texte principal */
+    --text-dim: #7b8394;        /* texte secondaire */
+    --buy: #089981;             /* vert TradingView */
+    --buy-hover: #0ab594;
+    --sell: #f23645;            /* rouge TradingView */
+    --sell-hover: #ff4d5a;
+    --accent: #f0b90b;          /* jaune ambre pour les alertes / stop-loss */
+    --radius: 10px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+  }
+
+  header {
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--panel-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  header h1 {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    margin: 0;
+  }
+
+  header h1 span {
+    color: var(--text-dim);
+    font-weight: 400;
+  }
+
+  #status-pill {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--panel-border);
+    color: var(--text-dim);
+  }
+
+  #status-pill.online { color: var(--buy); border-color: var(--buy); }
+
+  /* ============================================================
+     GRAPHIQUE TRADINGVIEW
+     ============================================================ */
+  #chart-container {
+    height: 55vh;
+    min-height: 380px;
+    border-bottom: 1px solid var(--panel-border);
+  }
+
+  /* ============================================================
+     TABLEAU DE BORD
+     ============================================================ */
+  main {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 24px;
+  }
+
+  .cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+  }
+
+  .card-label {
+    font-size: 12px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+  }
+
+  .card-value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 26px;
+    font-weight: 600;
+  }
+
+  #position-value {
+    font-size: 18px;
+  }
+
+  #pnl-value.positive { color: var(--buy); }
+  #pnl-value.negative { color: var(--sell); }
+
+  /* ============================================================
+     ZONE DE SAISIE (Stop-Loss + volume)
+     ============================================================ */
+  .controls-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  .field {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+  }
+
+  .field label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+
+  .field input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 15px;
+  }
+
+  .field input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  /* ============================================================
+     BOUTONS ACHAT / VENTE
+     ============================================================ */
+  .buttons-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  .btn-trade {
+    border: none;
+    border-radius: var(--radius);
+    padding: 22px;
+    font-family: 'Inter', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    color: #08110d;
+    transition: transform 0.08s ease, filter 0.15s ease;
+  }
+
+  .btn-trade:active { transform: scale(0.98); }
+
+  .btn-buy   { background: var(--buy);  color: #06120f; }
+  .btn-buy:hover  { background: var(--buy-hover); }
+
+  .btn-sell  { background: var(--sell); color: #200507; }
+  .btn-sell:hover { background: var(--sell-hover); }
+
+  .btn-trade:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  #close-position-btn {
+    width: 100%;
+    background: transparent;
+    border: 1px solid var(--panel-border);
+    color: var(--text-dim);
+    border-radius: var(--radius);
+    padding: 12px;
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    cursor: pointer;
+  }
+
+  #close-position-btn:hover {
+    border-color: var(--text-dim);
+    color: var(--text);
+  }
+
+  #close-position-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  /* ============================================================
+     JOURNAL DES ORDRES (historique simple)
+     ============================================================ */
+  #log-panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    max-height: 200px;
+    overflow-y: auto;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    color: var(--text-dim);
+  }
+
+  #log-panel .log-title {
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 10px;
+  }
+
+  #log-panel div.entry { padding: 3px 0; border-bottom: 1px dashed var(--panel-border); }
+  #log-panel div.entry:last-child { border-bottom: none; }
+
+  .note {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 16px;
+    line-height: 1.5;
+  }
+
+  @media (max-width: 640px) {
+    .cards, .controls-row, .buttons-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>WTI Paper Trading <span>— simulateur, argent fictif</span></h1>
+  <span id="status-pill">backend : vérification…</span>
+</header>
+
+<!-- ================================================================
+     WIDGET TRADINGVIEW : graphique du WTI en temps réel, thème sombre
+     ================================================================ -->
+<div id="chart-container">
+  <div class="tradingview-widget-container" style="height:100%;width:100%">
+    <div id="tradingview_wti" style="height:100%;width:100%"></div>
+  </div>
+</div>
+
+<script src="https://s3.tradingview.com/tv.js"></script>
+<script>
+  // Création du widget TradingView. On utilise TVC:USOIL, symbole fiable
+  // et toujours disponible gratuitement pour le pétrole WTI.
+  // Tu peux le remplacer par "PEPPERSTONE:XTIUSD" si ce flux est actif
+  // sur ton compte TradingView.
+  new TradingView.widget({
+    autosize: true,
+    symbol: "TVC:USOIL",
+    interval: "15",
+    timezone: "Etc/UTC",
+    theme: "dark",
+    style: "1",
+    locale: "fr",
+    toolbar_bg: "#131722",
+    enable_publishing: false,
+    hide_top_toolbar: false,
+    save_image: false,
+    container_id: "tradingview_wti"
+  });
+</script>
+
+<main>
+
+  <!-- ============================================================
+       SOLDE FICTIF + POSITION ACTUELLE
+       ============================================================ -->
+  <div class="cards">
+    <div class="card">
+      <div class="card-label">Solde fictif</div>
+      <div class="card-value" id="balance-value">10 000,00 $</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Position actuelle</div>
+      <div class="card-value" id="position-value">Aucune position</div>
+    </div>
+  </div>
+
+  <div class="cards">
+    <div class="card">
+      <div class="card-label">Prix d'entrée</div>
+      <div class="card-value" id="entry-value">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">P&amp;L latent (simulé)</div>
+      <div class="card-value" id="pnl-value">0,00 $</div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       STOP-LOSS ET VOLUME
+       ============================================================ -->
+  <div class="controls-row">
+    <div class="field">
+      <label for="stoploss-input">Stop-Loss (en $ par lot)</label>
+      <input type="number" id="stoploss-input" value="50" min="0" step="1" />
+    </div>
+    <div class="field">
+      <label for="lots-input">Volume (lots)</label>
+      <input type="number" id="lots-input" value="1" min="1" step="1" />
+    </div>
+  </div>
+
+  <!-- ============================================================
+       BOUTONS ACHAT / VENTE
+       ============================================================ -->
+  <div class="buttons-row">
+    <button class="btn-trade btn-buy" id="buy-btn">ACHETER (BUY)</button>
+    <button class="btn-trade btn-sell" id="sell-btn">VENDRE (SELL)</button>
+  </div>
+
+  <button id="close-position-btn" disabled>Clôturer la position</button>
+
+  <!-- ============================================================
+       JOURNAL DES ORDRES
+       ============================================================ -->
+  <div class="note"></div>
+  <div id="log-panel" style="margin-top:20px;">
+    <div class="log-title">Journal des ordres</div>
+    <div id="log-entries"><div class="entry">En attente d'un premier ordre…</div></div>
+  </div>
+
+  <p class="note">
+    ⚠️ Ceci est un simulateur : aucun ordre réel n'est envoyé à un broker.
+    Le prix utilisé pour calculer le P&amp;L est un prix simulé côté serveur
+    (à remplacer plus tard par le vrai flux de prix Pepperstone/MT5).
+  </p>
+
+</main>
+
+<script>
+  /* ==================================================================
+     CONFIGURATION : adresse du backend
+     ==================================================================
+     Remplace cette URL par l'adresse de ton backend une fois déployé
+     (ex: sur Render, Railway, ou tout autre hébergeur compatible FastAPI).
+     En local pour tester, laisse "http://127.0.0.1:8000".
+  */
+  const API_URL = https:"//nouveau-index.onrender.com";
+
+  // Éléments du DOM qu'on va mettre à jour dynamiquement
+  const balanceEl   = document.getElementById("balance-value");
+  const positionEl  = document.getElementById("position-value");
+  const entryEl     = document.getElementById("entry-value");
+  const pnlEl       = document.getElementById("pnl-value");
+  const buyBtn      = document.getElementById("buy-btn");
+  const sellBtn     = document.getElementById("sell-btn");
+  const closeBtn    = document.getElementById("close-position-btn");
+  const statusPill  = document.getElementById("status-pill");
+  const logEntries  = document.getElementById("log-entries");
+
+  // Formate un nombre en dollars, ex: 10250.5 -> "10 250,50 $"
+  function formatUSD(n) {
+    return n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " $";
+  }
+
+  // Ajoute une ligne dans le journal des ordres affiché à l'écran
+  function addLog(message) {
+    const div = document.createElement("div");
+    div.className = "entry";
+    const time = new Date().toLocaleTimeString("fr-FR");
+    div.textContent = `[${time}] ${message}`;
+    logEntries.prepend(div);
+  }
+
+  // Met à jour tout le tableau de bord à partir de l'état renvoyé par le serveur
+  function renderState(state) {
+    balanceEl.textContent = formatUSD(state.balance);
+
+    if (state.position === null) {
+      positionEl.textContent = "Aucune position";
+      entryEl.textContent = "—";
+      pnlEl.textContent = "0,00 $";
+      pnlEl.classList.remove("positive", "negative");
+      closeBtn.disabled = true;
+    } else {
+      const dirLabel = state.position.direction === "buy" ? "Achat" : "Vente";
+      positionEl.textContent = `${dirLabel} ${state.position.lots} lot(s) WTI`;
+      entryEl.textContent = state.position.entry_price.toFixed(2) + " $";
+      pnlEl.textContent = formatUSD(state.position.pnl);
+      pnlEl.classList.toggle("positive", state.position.pnl >= 0);
+      pnlEl.classList.toggle("negative", state.position.pnl < 0);
+      closeBtn.disabled = false;
+    }
+  }
+
+  // Appelle le backend pour ouvrir une position (achat ou vente)
+  async function placeOrder(direction) {
+    const lots = parseFloat(document.getElementById("lots-input").value) || 1;
+    const stopLoss = parseFloat(document.getElementById("stoploss-input").value) || 0;
+
+    try {
+      const res = await fetch(`${API_URL}/order`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ direction, lots, stop_loss: stopLoss })
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        addLog(`Erreur : ${data.detail || "commande refusée"}`);
+        return;
+      }
+
+      renderState(data);
+      addLog(`Ordre exécuté : ${direction.toUpperCase()} ${lots} lot(s) @ ${data.position.entry_price.toFixed(2)} $`);
+    } catch (err) {
+      addLog("Erreur réseau : impossible de contacter le serveur.");
+      console.error(err);
+    }
+  }
+
+  // Appelle le backend pour clôturer la position ouverte
+  async function closePosition() {
+    try {
+      const res = await fetch(`${API_URL}/close`, { method: "POST" });
+      const data = await res.json();
+
+      if (!res.ok) {
+        addLog(`Erreur : ${data.detail || "clôture impossible"}`);
+        return;
+      }
+
+      renderState(data);
+      addLog(`Position clôturée. Nouveau solde : ${formatUSD(data.balance)}`);
+    } catch (err) {
+      addLog("Erreur réseau : impossible de contacter le serveur.");
+      console.error(err);
+    }
+  }
+
+  // Récupère l'état actuel du compte au chargement de la page
+  async function fetchState() {
+    try {
+      const res = await fetch(`${API_URL}/account`);
+      const data = await res.json();
+      renderState(data);
+      statusPill.textContent = "backend : en ligne";
+      statusPill.classList.add("online");
+    } catch (err) {
+      statusPill.textContent = "backend : hors ligne";
+      statusPill.classList.remove("online");
+    }
+  }
+
+  // Connexion des boutons aux fonctions
+  buyBtn.addEventListener("click", () => placeOrder("buy"));
+  sellBtn.addEventListener("click", () => placeOrder("sell"));
+  closeBtn.addEventListener("click", closePosition);
+
+  // Au chargement de la page, on va chercher l'état du compte,
+  // puis on rafraîchit le P&L toutes les 5 secondes.
+  fetchState();
+  setInterval(fetchState, 5000);
+</script>
+
+</body>
+</html> 
